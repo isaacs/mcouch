@@ -1,0 +1,28 @@
+{
+  "name": "manta-couch",
+  "version": "0.0.0",
+  "description": "Put your CouchDB in Manta, attachments and docs and all",
+  "main": "mcouch.js",
+  "bin": {
+    "manta-couch": "mcouch.js"
+  },
+  "scripts": {
+    "test": "tap test/*.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/isaacs/manta-couch"
+  },
+  "author": "Isaac Z. Schlueter <i@izs.me> (http://blog.izs.me/)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/isaacs/manta-couch/issues"
+  },
+  "homepage": "https://github.com/isaacs/manta-couch",
+  "dependencies": {
+    "follow": "~0.10.1",
+    "cuttlefish": "~1.2.0",
+    "manta-client": "~1.0.4",
+    "manta": "~1.2.2"
+  }
+}
