@@ -4,8 +4,6 @@ var follow = require('follow');
 var url = require('url');
 var crypto = require('crypto');
 
-// XXX
-process.env.NODE_DEBUG='cuttlefish';
 var cuttlefish = require('cuttlefish');
 
 var path = require('path');
