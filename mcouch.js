@@ -20,8 +20,6 @@ function MantaCouch(opts) {
   if (!opts || typeof opts !== 'object')
     throw new TypeError('opts object required');
 
-  console.error(opts);
-
   this.opts = opts;
 
   if (!opts.client || opts.client.constructor.name !== 'MantaClient')
@@ -52,6 +50,8 @@ function MantaCouch(opts) {
   if (opts.seq && typeof opts.seq !== 'number')
     throw new TypeError('opts.seq must be of type number');
   this.seq = opts.seq || 0;
+
+  this.delete = !!opts.delete;
 
   this.following = false;
   this.savingSeq = false;
@@ -116,9 +116,11 @@ MantaCouch.prototype.onChange = function(er, change) {
 }
 
 MantaCouch.prototype.rm = function(change) {
-  this.log('RM ' + change.id);
-  this.follow.pause();
-  this.client.rmr(this.path + '/' + change.id, this.onDelete.bind(this));
+  if (this.delete) {
+    this.log('RM %s', change.id);
+    this.follow.pause();
+    this.client.rmr(this.path + '/' + change.id, this.onDelete.bind(this));
+  }
 }
 
 MantaCouch.prototype.onDelete = function(er) {
@@ -129,7 +131,7 @@ MantaCouch.prototype.onDelete = function(er) {
 }
 
 MantaCouch.prototype.put = function(change) {
-  this.log('PUT ' + change.id);
+  this.log('PUT %s', change.id);
   var doc = change.doc;
 
   var files = Object.keys(doc._attachments || {}).reduce(function (s, k) {
@@ -137,19 +139,14 @@ MantaCouch.prototype.put = function(change) {
     return s;
   }, {});
 
-  if (change.id === 'attachment_test') {
-    this.log(files);
-  } else {
-    this.log('not attachment test', files);
-  }
-
   var json = new Buffer(JSON.stringify(doc) + '\n', 'utf8');
   files['doc.json'] = {
     type: 'application/json',
     name: 'doc.json',
-    length: json.length,
-    data: json
+    length: json.length
   };
+
+  doc._json = json;
 
   cuttlefish({
     path: this.path + '/' + change.id,
@@ -158,12 +155,25 @@ MantaCouch.prototype.put = function(change) {
     getMd5: this.getMd5.bind(this, doc),
     request: this.getFile.bind(this, doc),
     delete: this.delete
-  }).on('complete', this.onCuttle.bind(this));
+  })
+    .on('send', this.onCuttleSend.bind(this, doc))
+    .on('delete', this.onCuttleDelete.bind(this, doc))
+    .on('complete', this.onCuttleComplete.bind(this));
 };
+
+// XXX
+MantaCouch.prototype.onCuttleSend = function(doc, file, response) {
+  this.log('-> %d SENT %s/%s', response.statusCode, doc._id, file.name);
+};
+
+MantaCouch.prototype.onCuttleDelete = function(doc, file, response) {
+  this.log('-> %d DELETED %s/%s', response.statusCode, doc._id, file.name);
+};
+
 
 MantaCouch.prototype.getMd5 = function(doc, file, cb) {
   assert.equal(file.name, 'doc.json');
-  var md5 = crypto.createHash('md5').update(file.data).digest('base64');
+  var md5 = crypto.createHash('md5').update(doc._json).digest('base64');
   cb(null, md5);
 }
 
@@ -175,45 +185,27 @@ MantaCouch.prototype.getFile = function(doc, file, cb) {
 }
 
 MantaCouch.prototype.streamDoc = function(doc, file, cb) {
+  this.log('streamDoc', doc, file, doc._json, cb);
   var s = new PassThrough();
-  s.end(file.data);
+  s.end(doc._json);
   cb(null, s);
 }
 
 MantaCouch.prototype.getAttachment = function(doc, file, cb) {
   var a = file.name.replace(/^_attachments/, doc._id);
-  this.log('attachment', a, file, doc._attachments);
+  this.log('PUT', a);
   var u = this.db + '/' + a;
   this.http.get(u, function(res) {
     cb(null, res);
   }).on('error', cb);
 }
 
-//MantaCouch.prototype.onPut = function(change, er) {
-//  if (er)
-//    throw er;
-//  if (change.doc._attachments)
-//    this.putAttachments(change.doc);
-//  else
-//    this.follow.resume();
-//}
-//
-//MantaCouch.prototype.putAttachments = function(doc) {
-//  cuttlefish({
-//    client: this.client,
-//    path: this.path + '/' + doc._id + '/_attachments',
-//    files: doc._attachments,
-//    request: this.getAttachment.bind(this, doc)
-//  }).on('complete', this.onCuttle.bind(this));
-//}
-
-MantaCouch.prototype.onCuttle = function(results) {
+MantaCouch.prototype.onCuttleComplete = function(results) {
   this.log(results);
   this.follow.resume();
 };
 
 
 MantaCouch.prototype.log = function() {
-  // todo: loglevels
   console.log.apply(console, arguments);
 }
