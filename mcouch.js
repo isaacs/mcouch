@@ -3,6 +3,7 @@ module.exports = MantaCouch;
 var follow = require('follow');
 var url = require('url');
 var crypto = require('crypto');
+var assert = require('assert');
 
 var cuttlefish = require('cuttlefish');
 
@@ -51,6 +52,10 @@ function MantaCouch(opts) {
     throw new TypeError('opts.seq must be of type number');
   this.seq = opts.seq || 0;
 
+  if (opts.concurrency && typeof opts.concurrency !== 'number')
+    throw new TypeError('opts.concurrency must be of type number');
+  this.concurrency = opts.concurrency;
+
   this.delete = !!opts.delete;
 
   this.following = false;
@@ -60,6 +65,8 @@ function MantaCouch(opts) {
 
 MantaCouch.prototype.saveSeq = function(file) {
   file = file || this.seqFile;
+  if (!file && !this.seqFile)
+    return
   if (!file)
     throw new Error('invalid sequence file: ' + file);
   if (!this.savingSeq)
@@ -67,12 +74,12 @@ MantaCouch.prototype.saveSeq = function(file) {
   this.savingSeq = true;
 }
 
-MantaCouch.prototype.readSeq = function(cb) {
+MantaCouch.prototype.start = function() {
   if (this.following)
     throw new Error('Cannot read sequence after follow starts');
   if (!this.seqFile) {
     this.seq = 0;
-    cb();
+    this.onReadSeq();
   } else
     fs.readFile(this.seqFile, 'ascii', this.onReadSeq.bind(this));
 }
@@ -82,30 +89,25 @@ MantaCouch.prototype.onReadSeq = function(er, data) {
     data = 0;
   else if (er)
     throw er
+  if (data === undefined)
+    data = null
+  if (!+data && +data !== 0)
+    throw new Error('invalid data in seqFile: ' + data);
   data = +data;
-  if (!data && data !== 0)
-    throw new Error('invalid data in seqFile');
   this.seq = +data;
-  this.follow();
+  this.follow = follow({
+    db: this.db,
+    since: this.seq,
+    inactivity_ms: this.inactivity_ms,
+    include_docs: true
+  }, this.onChange.bind(this));
+  this.following = true;
 }
 
 MantaCouch.prototype.afterSave = function(er) {
   if (er)
     throw er;
   this.savingSeq = false;
-}
-
-MantaCouch.prototype.start = function() {
-  this.readSeq(this.follow.bind(this));
-};
-
-MantaCouch.prototype.follow = function() {
-  this.follow = follow({
-    db: this.db,
-    since: this.seq,
-    include_docs: true,
-    inactivity_ms: this.inactivity_ms
-  }, this.onChange.bind(this));
 }
 
 MantaCouch.prototype.onChange = function(er, change) {
@@ -135,10 +137,39 @@ MantaCouch.prototype.onDelete = function(er) {
 
 MantaCouch.prototype.put = function(change) {
   this.log('PUT %s', change.id);
-  var doc = change.doc;
   this.pause();
 
+  // https://issues.apache.org/jira/browse/COUCHDB-1941
+  // https://issues.apache.org/jira/browse/COUCHDB-1940
+  var doc = change.doc;
+  if (!doc._attachments || Object.keys(doc._attachments).length === 0)
+    return this.putDoc(doc);
+
+  var u = this.db + '/' + change.id + '?att_encoding_info=true';
+  this.http.get(url.parse(u), this.onGetDoc.bind(this));
+}
+
+MantaCouch.prototype.onGetDoc = function(res) {
+  if (res.statusCode !== 200)
+    throw new Error('could not GET doc: ' + change.id);
+  var body = '';
+  res.setEncoding('utf8');
+  res.on('data', function(c) {
+    body += c;
+  });
+  res.on('end', function() {
+    this.putDoc(JSON.parse(body));
+  }.bind(this));
+}
+
+MantaCouch.prototype.putDoc = function(doc) {
   var files = Object.keys(doc._attachments || {}).reduce(function (s, k) {
+    var att = doc._attachments[k];
+    // Gzip-encoded attachments are lying liars playing lyres
+    if (att.encoding === 'gzip') {
+      delete att.digest;
+      delete att.length;
+    }
     s['_attachments/' + k] = doc._attachments[k];
     return s;
   }, {});
@@ -153,12 +184,13 @@ MantaCouch.prototype.put = function(change) {
   doc._json = json;
 
   cuttlefish({
-    path: this.path + '/' + change.id,
+    path: this.path + '/' + doc._id,
     client: this.client,
     files: files,
     getMd5: this.getMd5.bind(this, doc),
     request: this.getFile.bind(this, doc),
-    delete: this.delete
+    delete: this.delete,
+    concurrency: this.concurrency
   })
     .on('send', this.onCuttleSend.bind(this, doc))
     .on('delete', this.onCuttleDelete.bind(this, doc))

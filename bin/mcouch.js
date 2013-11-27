@@ -1,71 +1,38 @@
 #!/usr/bin/env node
 var createClient = require('manta-client');
+var manta = require('manta');
 var mantaCouch = require('../');
+var dashdash = require('dashdash');
+var parser = dashdash.createParser({
+  options: [
+    { names: [ 'seq-file', 'Q' ],
+      type: 'string',
+      help: 'File to store the sequence in',
+      helpArg: 'FILE' },
+    { names: [ 'seq', 'q' ],
+      type: 'number',
+      help: 'Sequence ID to start at',
+      helpArg: 'NUMBER' },
+    { names: [ 'inactivity-ms' ],
+      type: 'number',
+      help: 'Max ms to wait before assuming disconnection.',
+      helpArg: 'MS' }
+  ].concat(manta.DEFAULT_CLI_OPTIONS)
+});
 
-var client = createClient();
-var args = client.opts._args;
+var opts = parser.parse(process.argv, process.env);
+var args = opts._args;
 
-if (client.opts.help)
+if (opts.help || args.length !== 4)
   return usage();
 
-var db;
-var path;
-var seqFile;
-var seq;
-var inactivity_ms;
+var client = createClient(process.argv, process.env);
+var db = args[2];
+var path = args[3];
+var seqFile = opts.seq_file;
+var seq = opts.seq;
+var inactivity_ms = opts.inactivity_ms;
 
-for (var i = 2; i < args.length; i++) {
-  var arg = args[i];
-  var val;
-  if (arg.match(/^-Q/) || arg.match(/^--seq-file(=.+)?$/)) {
-    if (arg.match(/^-Q.+$/))
-      val = arg.slice(2);
-    else if (arg.match(/^--seq-file=.+/))
-      val = arg.slice('--seq-file='.length);
-    else
-      val = args[++i];
-    if (!val) {
-      console.error(arg + ' specified without value');
-      usage();
-      process.exit(1);
-    }
-    seqFile = val;
-  } else if (arg.match(/^-q/) || arg.match(/--seq(\=.+)$/)) {
-    if (arg.match(/^-q.+$/))
-      val = arg.slice(2);
-    else if (arg.match(/^--seq=.+/))
-      val = arg.slice('--seq='.length);
-    else
-      val = args[++i];
-    val = val && +val;
-    if (!val && val !== 0) {
-      console.error(arg + ' specified without numeric value');
-      usage();
-      process.exit(1);
-    }
-    seq = val;
-  } else if (arg.match(/^--inactivity-ms(=.+)?$/)) {
-    if (arg.match(/^--inactivity-ms=.+$/))
-      val = arg.slice('--inactivity-ms='.length);
-    else
-      val = args[++i];
-    val = val && +val;
-    if (!val && val !== 0) {
-      console.error(arg + ' specified without numeric value');
-      usage();
-      process.exit(1);
-    }
-    inactivity_ms = val;
-  } else if (!db && !arg.match(/^-/))
-    db = arg;
-  else if (!path && !arg.match(/^-/))
-    path = arg;
-  else {
-    console.error('unknown arg: ' + arg);
-    usage();
-    process.exit(1);
-  }
-}
 
 if (!db || !path) {
   usage();
@@ -74,7 +41,7 @@ if (!db || !path) {
 
 function usage() {
   console.log(usage.toString().split(/\n/).slice(4, -2).join('\n'));
-  console.log(createClient.parser.help());
+  console.log(parser.help());
 /*
 mcouch - Relax with the Fishes
 Usage: mcouch [args] COUCHDB MANTAPATH
@@ -83,9 +50,6 @@ Usage: mcouch [args] COUCHDB MANTAPATH
                                         http://localhost:5984/database
     MANTAPATH                           Remote path in Manta, like
                                         ~~/stor/database
-    -q --seq=SEQ                        Start at SEQ
-    -Q --seq-file=FILE                  Store sequence number in FILE
-    --inactivity-ms=NUM                 Restart if no activity in NUM ms
 */
 }
 

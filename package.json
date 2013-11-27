@@ -21,6 +21,7 @@
     "follow": "~0.10.1",
     "cuttlefish": "~1.2.0",
     "manta-client": "~1.0.4",
-    "manta": "~1.2.2"
+    "manta": "~1.2.2",
+    "dashdash": "~1.4.0"
   }
 }
