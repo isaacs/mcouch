@@ -53,11 +53,19 @@ Usage: mcouch [args] COUCHDB MANTAPATH
 */
 }
 
-mantaCouch({
+var mc = mantaCouch({
   client: client,
   db: db,
   path: path,
   seqFile: seqFile,
   inactivity_ms: inactivity_ms,
   seq: seq
+}).on('put', function(doc) {
+  console.log('PUT %s', doc._id);
+}).on('rm', function(doc) {
+  console.log('RM %s', doc._id);
+}).on('send', function(doc, file) {
+  console.log('-> sent %s/%s', doc._id, file.name);
+}).on('delete', function(doc, file) {
+  console.log('-> deleted %s/%s', doc._id, file.name);
 });

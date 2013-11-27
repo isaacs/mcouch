@@ -10,13 +10,19 @@ var cuttlefish = require('cuttlefish');
 var path = require('path');
 var fs = require('fs');
 var PassThrough = require('stream').PassThrough;
+var EE = require('events').EventEmitter;
+var util = require('util');
 
 if (!PassThrough)
   throw new Error('This module requires Node 0.10 or above');
 
+util.inherits(MantaCouch, EE);
+
 function MantaCouch(opts) {
   if (!(this instanceof MantaCouch))
     return new MantaCouch(opts);
+
+  EE.call(this);
 
   if (!opts || typeof opts !== 'object')
     throw new TypeError('opts object required');
@@ -88,11 +94,13 @@ MantaCouch.prototype.onReadSeq = function(er, data) {
   if (er && er.code === 'ENOENT')
     data = 0;
   else if (er)
-    throw er
+    return this.emit('error', er);
+
   if (data === undefined)
     data = null
   if (!+data && +data !== 0)
-    throw new Error('invalid data in seqFile: ' + data);
+    return this.emit('error', new Error('invalid data in seqFile'));
+
   data = +data;
   this.seq = +data;
   this.follow = follow({
@@ -106,13 +114,14 @@ MantaCouch.prototype.onReadSeq = function(er, data) {
 
 MantaCouch.prototype.afterSave = function(er) {
   if (er)
-    throw er;
+    this.emit('error', er);
   this.savingSeq = false;
 }
 
 MantaCouch.prototype.onChange = function(er, change) {
   if (er)
-    throw er;
+    return this.emit('error', er);
+
   this.seq = change.seq;
   if (change.deleted)
     this.rm(change);
@@ -122,21 +131,29 @@ MantaCouch.prototype.onChange = function(er, change) {
 
 MantaCouch.prototype.rm = function(change) {
   if (this.delete) {
-    this.log('RM %s', change.id);
+    this.emit('rm', change.doc);
     this.pause();
-    this.client.rmr(this.path + '/' + change.id, this.onDelete.bind(this));
+    this.client.rmr(this.path + '/' + change.id, this.onRm.bind(this));
   }
 }
 
-MantaCouch.prototype.onDelete = function(er) {
+MantaCouch.prototype.onRm = function(er) {
   if (!er || er.statusCode === 404)
     this.resume();
   else
-    throw er;
+    this.emit('error', er);
+}
+
+MantaCouch.prototype.stop =
+MantaCouch.prototype.close =
+MantaCouch.prototype.destroy = function() {
+  if (this.client)
+    this.client.close();
+  if (this.follow)
+    this.follow.stop();
 }
 
 MantaCouch.prototype.put = function(change) {
-  this.log('PUT %s', change.id);
   this.pause();
 
   // https://issues.apache.org/jira/browse/COUCHDB-1941
@@ -151,7 +168,7 @@ MantaCouch.prototype.put = function(change) {
 
 MantaCouch.prototype.onGetDoc = function(res) {
   if (res.statusCode !== 200)
-    throw new Error('could not GET doc: ' + change.id);
+    this.emit('error', new Error('could not GET doc: ' + change.id));
   var body = '';
   res.setEncoding('utf8');
   res.on('data', function(c) {
@@ -163,6 +180,7 @@ MantaCouch.prototype.onGetDoc = function(res) {
 }
 
 MantaCouch.prototype.putDoc = function(doc) {
+  this.emit('put', doc);
   var files = Object.keys(doc._attachments || {}).reduce(function (s, k) {
     var att = doc._attachments[k];
     // Gzip-encoded attachments are lying liars playing lyres
@@ -192,17 +210,10 @@ MantaCouch.prototype.putDoc = function(doc) {
     delete: this.delete,
     concurrency: this.concurrency
   })
-    .on('send', this.onCuttleSend.bind(this, doc))
-    .on('delete', this.onCuttleDelete.bind(this, doc))
+    .on('send', this.emit.bind(this, 'send', doc))
+    .on('delete', this.emit.bind(this, 'delete', doc))
+    .on('error', this.emit.bind(this, 'error'))
     .on('complete', this.onCuttleComplete.bind(this, doc));
-}
-
-MantaCouch.prototype.onCuttleSend = function(doc, file, response) {
-  this.log('-> %d SENT %s/%s', response.statusCode, doc._id, file.name);
-}
-
-MantaCouch.prototype.onCuttleDelete = function(doc, file, response) {
-  this.log('-> %d DELETED %s/%s', response.statusCode, doc._id, file.name);
 }
 
 MantaCouch.prototype.getMd5 = function(doc, file, cb) {
@@ -226,7 +237,7 @@ MantaCouch.prototype.streamDoc = function(doc, file, cb) {
 
 MantaCouch.prototype.getAttachment = function(doc, file, cb) {
   var a = file.name.replace(/^_attachments/, doc._id);
-  this.log('PUT', a);
+  this.emit('attachment', doc, file);
   var u = this.db + '/' + a;
   this.http.get(u, function(res) {
     cb(null, res);
@@ -234,7 +245,7 @@ MantaCouch.prototype.getAttachment = function(doc, file, cb) {
 }
 
 MantaCouch.prototype.onCuttleComplete = function(doc, results) {
-  this.log('COMPLETE', doc._id);
+  this.emit('complete', doc, results);
   this.resume();
 };
 
@@ -245,9 +256,4 @@ MantaCouch.prototype.pause = function() {
 MantaCouch.prototype.resume = function() {
   this.saveSeq();
   this.follow.resume();
-}
-
-
-MantaCouch.prototype.log = function() {
-  console.log.apply(console, arguments);
 }
