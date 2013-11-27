@@ -3,3 +3,4 @@ test/fixtures/.delete
 test/fixtures/pid
 test/fixtures/_users.couch
 erl_crash.dump
+test/fixtures/_replicator.couch
