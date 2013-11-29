@@ -154,6 +154,12 @@ MantaCouch.prototype.destroy = function() {
 }
 
 MantaCouch.prototype.put = function(change) {
+  if (change.id !== encodeURIComponent(change.id)) {
+    console.error('WARNING: Skipping %j\nWARNING: See %s', change.id,
+                 'https://github.com/joyent/node-manta/issues/157')
+    return
+  }
+
   this.pause();
 
   // https://issues.apache.org/jira/browse/COUCHDB-1941
