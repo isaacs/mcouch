@@ -163,10 +163,10 @@ MantaCouch.prototype.put = function(change) {
     return this.putDoc(doc);
 
   var u = this.db + '/' + change.id + '?att_encoding_info=true';
-  this.http.get(url.parse(u), this.onGetDoc.bind(this));
+  this.http.get(url.parse(u), this.onGetDoc.bind(this, change));
 }
 
-MantaCouch.prototype.onGetDoc = function(res) {
+MantaCouch.prototype.onGetDoc = function(change, res) {
   if (res.statusCode !== 200)
     this.emit('error', new Error('could not GET doc: ' + change.id));
   var body = '';
