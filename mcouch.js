@@ -242,7 +242,9 @@ MantaCouch.prototype.streamDoc = function(doc, file, cb) {
 }
 
 MantaCouch.prototype.getAttachment = function(doc, file, cb) {
-  var a = file.name.replace(/^_attachments/, doc._id);
+  var a = path.dirname(file.name).replace(/^_attachments/, doc._id);
+  var f = encodeURIComponent(path.basename(file.name))
+  a += '/' + f
   this.emit('attachment', doc, file);
   var u = this.db + '/' + a;
   this.http.get(u, function(res) {
