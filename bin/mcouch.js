@@ -71,6 +71,6 @@ var mc = mantaCouch({
   console.log('RM %s', doc._id);
 }).on('send', function(doc, file) {
   console.log('-> sent %s/%s', doc._id, file.name);
-}).on('delete', function(doc, file) {
-  console.log('-> deleted %s/%s', doc._id, file.name);
+}).on('delete', function(doc, remote) {
+  console.log('-> deleted %s/%s', doc._id, remote);
 });
