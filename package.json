@@ -19,7 +19,7 @@
   "homepage": "https://github.com/isaacs/mcouch",
   "dependencies": {
     "follow": "~0.10.1",
-    "cuttlefish": "~1.2.0",
+    "cuttlefish": "~1.3.0",
     "manta-client": "~1.0.4",
     "manta": "~1.2.2",
     "dashdash": "~1.4.0"
