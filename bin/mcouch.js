@@ -16,7 +16,10 @@ var parser = dashdash.createParser({
     { names: [ 'inactivity-ms' ],
       type: 'number',
       help: 'Max ms to wait before assuming disconnection.',
-      helpArg: 'MS' }
+      helpArg: 'MS' },
+    { names: [ 'delete', 'd' ],
+      type: 'bool',
+      help: 'Delete removed attachments and docs from manta' }
   ].concat(manta.DEFAULT_CLI_OPTIONS)
 });
 
@@ -32,6 +35,7 @@ var path = args[3];
 var seqFile = opts.seq_file;
 var seq = opts.seq;
 var inactivity_ms = opts.inactivity_ms;
+var del = opts.delete;
 
 
 if (!db || !path) {
@@ -59,7 +63,8 @@ var mc = mantaCouch({
   path: path,
   seqFile: seqFile,
   inactivity_ms: inactivity_ms,
-  seq: seq
+  seq: seq,
+  delete: del
 }).on('put', function(doc) {
   console.log('PUT %s', doc._id);
 }).on('rm', function(doc) {
