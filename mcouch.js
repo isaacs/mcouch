@@ -41,7 +41,9 @@ function MantaCouch(opts) {
 
   if (!opts.path || typeof opts.path !== 'string')
     throw new TypeError('opts.path is required');
-  this.path = opts.path.replace(/\/+$/, '');
+  this.path = opts.path
+    .replace(/\/+$/, '')
+    .replace(/^~~/, '/' + this.client.user);
 
   if (!opts.db || !url.parse(opts.db).protocol)
     throw new TypeError('opts.db url is required');
