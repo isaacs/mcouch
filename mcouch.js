@@ -49,7 +49,7 @@ function MantaCouch(opts) {
     throw new TypeError('opts.db url is required');
   this.db = opts.db.replace(/\/+$/, '');
 
-  this.http = url.parse(this.db).prototcol === 'https:' ?
+  this.http = url.parse(this.db).protocol === 'https:' ?
     require('https') : require('http');
 
   if (opts.inactivity_ms && typeof opts.inactivity_ms !== 'number')
