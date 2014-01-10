@@ -125,6 +125,11 @@ MantaCouch.prototype.onChange = function(er, change) {
     return this.emit('error', er);
 
   this.seq = change.seq;
+
+  // Please don't delete the entire store in Manta, kthx
+  if (!change.id)
+    return;
+
   if (change.deleted)
     this.rm(change);
   else
