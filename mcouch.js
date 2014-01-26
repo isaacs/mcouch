@@ -5,6 +5,8 @@ var url = require('url');
 var crypto = require('crypto');
 var assert = require('assert');
 
+var parse = require('parse-json-response');
+
 var cuttlefish = require('cuttlefish');
 
 var path = require('path');
@@ -108,8 +110,7 @@ MantaCouch.prototype.onReadSeq = function(er, data) {
   this.follow = follow({
     db: this.db,
     since: this.seq,
-    inactivity_ms: this.inactivity_ms,
-    include_docs: true
+    inactivity_ms: this.inactivity_ms
   }, this.onChange.bind(this));
   this.following = true;
 }
@@ -138,7 +139,7 @@ MantaCouch.prototype.onChange = function(er, change) {
 
 MantaCouch.prototype.rm = function(change) {
   if (this.delete) {
-    this.emit('rm', change.doc);
+    this.emit('rm', change);
     this.pause();
     this.client.rmr(this.path + '/' + change.id, this.onRm.bind(this));
   }
@@ -168,32 +169,20 @@ MantaCouch.prototype.put = function(change) {
   }
 
   this.pause();
+  var query = 'att_encoding_info=true&revs=true';
+  var u = url.parse(this.db + '/' + change.id + '?' + query);
+  this.http.get(u, parse(function(er, doc, res) {
+    if (er)
+      return this.emit('error', er);
+    change.doc = doc;
+    this._put(change);
+  }.bind(this)))
+}
 
-  // https://issues.apache.org/jira/browse/COUCHDB-1941
-  // https://issues.apache.org/jira/browse/COUCHDB-1940
+MantaCouch.prototype._put = function(change) {
+  this.emit('put', change);
   var doc = change.doc;
-  if (!doc._attachments || Object.keys(doc._attachments).length === 0)
-    return this.putDoc(doc);
 
-  var u = this.db + '/' + change.id + '?att_encoding_info=true';
-  this.http.get(url.parse(u), this.onGetDoc.bind(this, change));
-}
-
-MantaCouch.prototype.onGetDoc = function(change, res) {
-  if (res.statusCode !== 200)
-    this.emit('error', new Error('could not GET doc: ' + change.id));
-  var body = '';
-  res.setEncoding('utf8');
-  res.on('data', function(c) {
-    body += c;
-  });
-  res.on('end', function() {
-    this.putDoc(JSON.parse(body));
-  }.bind(this));
-}
-
-MantaCouch.prototype.putDoc = function(doc) {
-  this.emit('put', doc);
   var files = Object.keys(doc._attachments || {}).reduce(function (s, k) {
     var att = doc._attachments[k];
     // Gzip-encoded attachments are lying liars playing lyres
@@ -212,55 +201,53 @@ MantaCouch.prototype.putDoc = function(doc) {
     length: json.length
   };
 
-  doc._json = json;
-
   cuttlefish({
     path: this.path + '/' + doc._id,
     client: this.client,
     files: files,
-    getMd5: this.getMd5.bind(this, doc),
-    request: this.getFile.bind(this, doc),
+    getMd5: this.getMd5.bind(this, change, json),
+    request: this.getFile.bind(this, change, json),
     delete: this.delete,
     concurrency: this.concurrency
   })
-    .on('send', this.emit.bind(this, 'send', doc))
-    .on('delete', this.emit.bind(this, 'delete', doc))
+    .on('send', this.emit.bind(this, 'send', change))
+    .on('delete', this.emit.bind(this, 'delete', change))
     .on('error', this.emit.bind(this, 'error'))
-    .on('complete', this.onCuttleComplete.bind(this, doc));
+    .on('complete', this.onCuttleComplete.bind(this, change));
 }
 
-MantaCouch.prototype.getMd5 = function(doc, file, cb) {
-  assert.equal(file.name, 'doc.json');
-  var md5 = crypto.createHash('md5').update(doc._json).digest('base64');
+MantaCouch.prototype.getMd5 = function(change, json, file, cb) {
+  if (file.name === 'doc.json')
+    var md5 = crypto.createHash('md5').update(json).digest('base64');
   cb(null, md5);
 }
 
-MantaCouch.prototype.getFile = function(doc, file, cb) {
+MantaCouch.prototype.getFile = function(change, json, file, cb) {
   if (file.name === 'doc.json')
-    this.streamDoc(doc, file, cb)
+    this.streamDoc(json, file, cb)
   else
-    this.getAttachment(doc, file, cb)
+    this.getAttachment(change, file, cb)
 }
 
-MantaCouch.prototype.streamDoc = function(doc, file, cb) {
+MantaCouch.prototype.streamDoc = function(json, file, cb) {
   var s = new PassThrough();
-  s.end(doc._json);
+  s.end(json);
   cb(null, s);
 }
 
-MantaCouch.prototype.getAttachment = function(doc, file, cb) {
-  var a = path.dirname(file.name).replace(/^_attachments/, doc._id);
+MantaCouch.prototype.getAttachment = function(change, file, cb) {
+  var a = path.dirname(file.name).replace(/^_attachments/, change.id);
   var f = encodeURIComponent(path.basename(file.name))
   a += '/' + f
-  this.emit('attachment', doc, file);
+  this.emit('attachment', change, file);
   var u = this.db + '/' + a;
   this.http.get(u, function(res) {
     cb(null, res);
   }).on('error', cb);
 }
 
-MantaCouch.prototype.onCuttleComplete = function(doc, results) {
-  this.emit('complete', doc, results);
+MantaCouch.prototype.onCuttleComplete = function(change, results) {
+  this.emit('complete', change, results);
   this.resume();
 };
 

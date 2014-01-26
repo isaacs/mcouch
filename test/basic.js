@@ -67,17 +67,17 @@ function testEvents(evs, t) {
     path: '~~/stor/mcouch-testing',
     seq: 0,
     inactivity_ms: 10000
-  }).on('put', function(doc) {
-    ev('put %s', doc._id);
-  }).on('rm', function(doc) {
-    ev('rm %s', doc._id);
-  }).on('send', function(doc, file) {
-    ev('sent %s/%s', doc._id, file.name);
-  }).on('delete', function(doc, file) {
-    ev('delete %s/%s', doc._id, file.name);
-  }).on('attachment', function(doc, file) {
-    ev('attachment %s/%s', doc._id, file.name);
-  }).on('complete', function(doc, results) {
-    ev('complete %s', doc._id);
+  }).on('put', function(change) {
+    ev('put %s', change.id);
+  }).on('rm', function(change) {
+    ev('rm %s', change.id);
+  }).on('send', function(change, file) {
+    ev('sent %s/%s', change.id, file.name);
+  }).on('delete', function(change, file) {
+    ev('delete %s/%s', change.id, file.name);
+  }).on('attachment', function(change, file) {
+    ev('attachment %s/%s', change.id, file.name);
+  }).on('complete', function(change, results) {
+    ev('complete %s', change.id);
   });
 }
