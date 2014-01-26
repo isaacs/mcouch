@@ -141,11 +141,11 @@ MantaCouch.prototype.rm = function(change) {
   if (this.delete) {
     this.emit('rm', change);
     this.pause();
-    this.client.rmr(this.path + '/' + change.id, this.onRm.bind(this));
+    this.client.rmr(this.path + '/' + change.id, this.onRm.bind(this, change));
   }
 }
 
-MantaCouch.prototype.onRm = function(er) {
+MantaCouch.prototype.onRm = function(change, er) {
   if (!er || er.statusCode === 404)
     this.resume();
   else
