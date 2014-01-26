@@ -1,6 +1,6 @@
 {
   "name": "mcouch",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Put your CouchDB in Manta, attachments and docs and all",
   "main": "mcouch.js",
   "bin": "bin/mcouch.js",
