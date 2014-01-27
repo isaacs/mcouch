@@ -79,9 +79,17 @@ MantaCouch.prototype.saveSeq = function(file) {
     return
   if (!file)
     throw new Error('invalid sequence file: ' + file);
-  if (!this.savingSeq)
-    fs.writeFile(file, this.seq + '\n', 'ascii', this.afterSave.bind(this));
+  if (this.savingSeq)
+    return
+
   this.savingSeq = true;
+  var t = file + '.TMP'
+  var data = this.seq + '\n'
+  fs.writeFile(t, data, 'ascii', function(er) {
+    if (er)
+      return this.afterSave(er)
+    fs.rename(t, file, this.afterSave.bind(this))
+  }.bind(this))
 }
 
 MantaCouch.prototype.start = function() {
