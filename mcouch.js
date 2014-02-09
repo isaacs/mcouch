@@ -5,6 +5,8 @@ var url = require('url');
 var crypto = require('crypto');
 var assert = require('assert');
 
+var SeqFile = require('seq-file');
+
 var parse = require('parse-json-response');
 
 var cuttlefish = require('cuttlefish');
@@ -37,9 +39,9 @@ function MantaCouch(opts) {
 
   if (opts.seqFile && typeof opts.seqFile !== 'string')
     throw new TypeError('opts.seqFile must be of type string');
-  this.seqFile = opts.seqFile || null;
-  if (this.seqFile)
-    this.seqFile = path.resolve(this.seqFile);
+  this.seqFile = null;
+  if (opts.seqFile)
+    this.seqFile = new SeqFile(opts.seqFile);
 
   if (!opts.path || typeof opts.path !== 'string')
     throw new TypeError('opts.path is required');
@@ -61,6 +63,8 @@ function MantaCouch(opts) {
   if (opts.seq && typeof opts.seq !== 'number')
     throw new TypeError('opts.seq must be of type number');
   this.seq = opts.seq || 0;
+  if (this.seqFile)
+    this.seqFile.seq = this.seq;
 
   if (opts.concurrency && typeof opts.concurrency !== 'number')
     throw new TypeError('opts.concurrency must be of type number');
@@ -68,65 +72,29 @@ function MantaCouch(opts) {
 
   this.delete = !!opts.delete;
 
-  this.following = false;
-  this.savingSeq = false;
+  this.started = false;
   this.start();
 }
 
-MantaCouch.prototype.saveSeq = function(file) {
-  file = file || this.seqFile;
-  if (!file && !this.seqFile)
-    return
-  if (!file)
-    throw new Error('invalid sequence file: ' + file);
-  if (this.savingSeq)
-    return
-
-  this.savingSeq = true;
-  var t = file + '.TMP'
-  var data = this.seq + '\n'
-  fs.writeFile(t, data, 'ascii', function(er) {
-    if (er)
-      return this.afterSave(er)
-    fs.rename(t, file, this.afterSave.bind(this))
-  }.bind(this))
-}
-
 MantaCouch.prototype.start = function() {
-  if (this.following)
-    throw new Error('Cannot read sequence after follow starts');
-  if (!this.seqFile) {
-    this.seq = 0;
-    this.onReadSeq();
-  } else
-    fs.readFile(this.seqFile, 'ascii', this.onReadSeq.bind(this));
+  if (this.started)
+    throw new Error('Already started');
+
+  this.started = true;
+
+  if (this.seq || !this.seqFile)
+    this.onReadSeq(null, this.seq);
+  else
+    this.seqFile.read(this.onReadSeq.bind(this));
 }
 
 MantaCouch.prototype.onReadSeq = function(er, data) {
-  if (er && er.code === 'ENOENT')
-    data = 0;
-  else if (er)
-    return this.emit('error', er);
-
-  if (data === undefined)
-    data = null
-  if (!+data && +data !== 0)
-    return this.emit('error', new Error('invalid data in seqFile'));
-
-  data = +data;
-  this.seq = +data;
+  this.seq = data;
   this.follow = follow({
     db: this.db,
     since: this.seq,
     inactivity_ms: this.inactivity_ms
   }, this.onChange.bind(this));
-  this.following = true;
-}
-
-MantaCouch.prototype.afterSave = function(er) {
-  if (er)
-    this.emit('error', er);
-  this.savingSeq = false;
 }
 
 MantaCouch.prototype.onChange = function(er, change) {
@@ -134,6 +102,8 @@ MantaCouch.prototype.onChange = function(er, change) {
     return this.emit('error', er);
 
   this.seq = change.seq;
+  if (this.seqFile)
+    this.seqFile.seq = change.seq;
 
   // Please don't delete the entire store in Manta, kthx
   if (!change.id)
@@ -264,6 +234,7 @@ MantaCouch.prototype.pause = function() {
 };
 
 MantaCouch.prototype.resume = function() {
-  this.saveSeq();
+  if (this.seqFile)
+    this.seqFile.save();
   this.follow.resume();
 }
