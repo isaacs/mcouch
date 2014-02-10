@@ -19,7 +19,10 @@ var parser = dashdash.createParser({
       helpArg: 'MS' },
     { names: [ 'delete', 'd' ],
       type: 'bool',
-      help: 'Delete removed attachments and docs from manta' }
+      help: 'Delete removed attachments and docs from manta' },
+    { names: [ 'forensic', 'f' ],
+      type: 'bool',
+      help: 'Track changes in a non-destructive way' }
   ].concat(manta.DEFAULT_CLI_OPTIONS)
 });
 

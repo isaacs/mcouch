@@ -13,7 +13,7 @@ test('kill all the users', function (t) {
   t.end()
 })
 
-test('craigslist (well, how do you get rid of YOUR couches?)', function (t) {
+test('craigslist', function (t) {
   try {
     var pid = fs.readFileSync(pidfile)
   } catch (er) {}
